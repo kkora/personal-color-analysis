@@ -12,6 +12,8 @@ import streamlit as st
 from PIL import Image, ImageOps
 
 from src.analysis import analyze, models_for, provider_names
+from src.board import render_board
+from src.genimage import EDIT_MODELS, ai_recolor, resolve_key, supports_image_edit
 from src.imaging import palette_sheet, recolor_shirt
 from src.palettes import SEASONS
 
@@ -136,6 +138,27 @@ def _shirt(img_bytes: bytes, hx: str) -> Image.Image:
     return recolor_shirt(img, hx)
 
 
+@st.cache_data(show_spinner=False)
+def _shirt_ai(img_bytes: bytes, name: str, hx: str, provider: str,
+              model: str, key: str) -> Image.Image:
+    img = Image.open(__import__("io").BytesIO(img_bytes))
+    img = ImageOps.exif_transpose(img)
+    return ai_recolor(img, name, hx, provider, key, model)
+
+
+def shirt_img(img_bytes: bytes, name: str, hx: str) -> Image.Image:
+    """Comparison portrait for one colour, using the selected engine."""
+    if ai_mode and not st.session_state.get("ai_edit_failed"):
+        try:
+            return _shirt_ai(img_bytes, name, hx, provider, edit_model,
+                             edit_key)
+        except Exception as exc:  # auth / quota / safety-block errors
+            st.session_state["ai_edit_failed"] = True
+            st.warning(f"AI garment edit failed ({type(exc).__name__}) — "
+                       "showing local recolours instead.")
+    return _shirt(img_bytes, hx)
+
+
 def portrait_grid(img_bytes: bytes, colors, ok: bool, per_row=4):
     mark, cls = ("✓", "ok") if ok else ("✗", "no")
     for i in range(0, len(colors), per_row):
@@ -145,7 +168,8 @@ def portrait_grid(img_bytes: bytes, colors, ok: bool, per_row=4):
                 st.markdown(f'<div class="pframe">'
                             f'<div class="badge {cls}">{mark}</div>',
                             unsafe_allow_html=True)
-                st.image(_shirt(img_bytes, hx), use_container_width=True)
+                st.image(shirt_img(img_bytes, name, hx),
+                         use_container_width=True)
                 st.markdown(f'</div><div class="pname">{name}</div>',
                             unsafe_allow_html=True)
 
@@ -174,6 +198,21 @@ with st.sidebar:
     st.caption("The portrait never leaves your machine unless you provide "
                f"an API key, in which case it is sent to the {provider} API "
                "for analysis only.")
+    ai_toggle = st.toggle(
+        "AI garment recolour (photoreal)",
+        value=False,
+        help="Generate every comparison portrait independently with the "
+             "provider's image-edit model — identical person, real fabric "
+             "folds. Needs an OpenAI or Google key. Slower, and billed "
+             "per image (28 edits per analysis).")
+    edit_key = resolve_key(provider, api_key or None)
+    edit_model = EDIT_MODELS.get(provider, [""])[0]
+    ai_mode = ai_toggle and supports_image_edit(provider) and bool(edit_key)
+    if ai_toggle and not supports_image_edit(provider):
+        st.warning("Claude doesn't offer image editing — switch the provider "
+                   "to OpenAI or Google for AI recolours.")
+    elif ai_toggle and not edit_key:
+        st.warning("Add an API key to enable AI garment recolours.")
     manual = st.selectbox("Override season (optional)",
                           ["Auto-detect"] + list(SEASONS.keys()))
 
@@ -214,10 +253,14 @@ with c1:
     st.image(portrait, use_container_width=True)
 with c2:
     section("Section 02", "Colour Profile")
+    conf = result.get("confidence")
+    src_line = f'{season["tagline"]} · {result["source"]}'
+    if conf:
+        src_line += f' · {conf}% confidence'
     st.markdown(f'<span class="season-chip" style="background:{accent};">'
                 f'{season_name.upper()}</span>'
                 f'<div style="margin-top:6px;color:#8A857C;font-size:13px;">'
-                f'{season["tagline"]} · {result["source"]}</div>',
+                f'{src_line}</div>',
                 unsafe_allow_html=True)
     st.write("")
     gauge("Cool", "Warm", result["warm"],
@@ -417,6 +460,39 @@ with d2:
                                       for n, h in shopping]}, indent=2),
         file_name=f"{season_name.lower().replace(' ', '-')}-palette.json",
         mime="application/json", use_container_width=True)
+
+st.divider()
+
+# ----------------------------------------------------------------------------
+# Bonus — full board image (one shareable PNG)
+# ----------------------------------------------------------------------------
+section("Bonus", "Full Board Image")
+st.caption("The complete analysis composed into a single shareable image — "
+           "portrait, profile, comparison grids, palette, clothing, metals "
+           "and style guide.")
+
+
+@st.cache_data(show_spinner=False)
+def _board_png(img_bytes: bytes, season_name: str, result: dict,
+               engine: tuple) -> bytes:
+    portrait = ImageOps.exif_transpose(
+        Image.open(__import__("io").BytesIO(img_bytes))).convert("RGB")
+    season = SEASONS[season_name]
+    best = [(n, hx, shirt_img(img_bytes, n, hx)) for n, hx in season["best"]]
+    avoid = [(n, hx, shirt_img(img_bytes, n, hx)) for n, hx in season["avoid"]]
+    return render_board(portrait, season_name, season, result, best, avoid)
+
+
+_ai_live = ai_mode and not st.session_state.get("ai_edit_failed")
+engine_sig = (_ai_live, provider if _ai_live else "", edit_model if _ai_live else "")
+with st.spinner("Composing board image…"):
+    board_png = _board_png(img_bytes, season_name, result, engine_sig)
+st.image(board_png, use_container_width=True)
+st.download_button(
+    "Download board PNG",
+    data=board_png,
+    file_name=f"{season_name.lower().replace(' ', '-')}-board.png",
+    mime="image/png")
 
 st.caption("Colour analysis is styling guidance, not a scientific measurement. "
            "Lighting and camera white balance affect results.")

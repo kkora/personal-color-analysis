@@ -19,6 +19,7 @@ A diagram-first, luxury-consultant style personal colour analysis app built with
 | 09 · Metals | ✓ / △ / ✗ metal recommendations |
 | 10 · Style Tips | Icon-led do / don't guidance |
 | Bonus | Glasses & hair tones, suit+shirt+tie combos, casual outfits, 48-swatch shopping palette (PNG + JSON export) |
+| Board image | The entire analysis composed into **one shareable PNG** — portrait, profile rings, best/avoid comparison grids with ✓/✗ badges, palette, clothing & accessory tiles, metals, style guide (rendered by [`src/board.py`](src/board.py), downloadable) |
 
 All 12 classic colour seasons are fully specified in [`src/palettes.py`](src/palettes.py).
 
@@ -30,25 +31,45 @@ Two engines, same output shape:
 
    | Provider | Env var | Models |
    |---|---|---|
+   | OpenAI (GPT) — default | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4-mini`, `gpt-4o` |
    | Anthropic (Claude) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5` |
-   | OpenAI (GPT) | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4-mini`, `gpt-4o` |
    | Google (Gemini) | `GOOGLE_API_KEY` | `gemini-2.5-pro`, `gemini-2.5-flash` |
 
 2. **Offline heuristic** (no key needed) — pixel sampling of the face and hair regions estimates the four axes and maps them to the nearest season. Approximate, but fully local.
 
 You can also override the detected season manually from the sidebar.
 
-The shirt recolouring is luminance-preserving: a feathered mask over the clothing region re-hues the fabric to each target colour while keeping folds and shading, so every comparison portrait is pixel-identical except for shirt colour.
+## How the comparison portraits work
+
+Two engines, selectable in the sidebar:
+
+1. **Local recolour** (default, free) — luminance-preserving: a feathered mask over the clothing region re-hues the fabric to each target colour while keeping folds and shading, so every comparison portrait is pixel-identical except for shirt colour.
+
+2. **AI garment recolour** (toggle, photoreal) — each comparison portrait is generated *independently* with the provider's image-editing model (`gpt-image-1` for OpenAI, `gemini-2.5-flash-image` for Google) using a strict identity-preservation retouching brief ([`src/genimage.py`](src/genimage.py)): only the garment changes; face, hair, pose, background, and lighting stay untouched. Needs an OpenAI or Google key and is billed per image (28 edits per analysis). Falls back to the local engine on any failure. Anthropic models don't generate images, so this toggle requires the OpenAI or Google provider.
+
+The app always assembles the grids and the final board itself (Pillow) rather than asking a model to compose the whole infographic in one image — per-colour edits are far more consistent.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/personal-color-analysis.git
+git clone https://github.com/kkora/personal-color-analysis.git
 cd personal-color-analysis
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+On Windows (PowerShell):
+
+```powershell
+git clone https://github.com/kkora/personal-color-analysis.git
+cd personal-color-analysis
+python -m venv .venv; .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+The app opens at `http://localhost:8501`. Portraits upload as JPG, PNG, or WEBP (20 MB max, set in [`.streamlit/config.toml`](.streamlit/config.toml)).
 
 Optional — enable vision analysis by exporting the key for your chosen provider:
 
@@ -59,6 +80,8 @@ export GOOGLE_API_KEY=...             # Google (Gemini)
 streamlit run app.py
 ```
 
+(PowerShell: `$env:ANTHROPIC_API_KEY = "sk-ant-..."` etc.)
+
 or paste the key into the sidebar at runtime (it is never stored).
 
 ## Project structure
@@ -68,6 +91,8 @@ app.py                  Streamlit UI — the full board
 src/palettes.py         Master colour library + 12 season definitions
 src/analysis.py         Multi-provider vision analysis (Claude/GPT/Gemini) + offline fallback
 src/imaging.py          Shirt recolouring, face sampling, palette PNG export
+src/genimage.py         AI garment recolouring (gpt-image-1 / Gemini image) with identity-preservation prompt
+src/board.py            Composes the whole analysis into one shareable board PNG
 .streamlit/config.toml  Light editorial theme
 ```
 

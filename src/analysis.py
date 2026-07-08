@@ -30,15 +30,15 @@ from src.palettes import SEASON_NAMES, classify
 # Each provider lists its API-key environment variable and the vision-capable
 # models offered in the UI. The first model in each list is the default.
 PROVIDERS = {
-    "Anthropic (Claude)": {
-        "env": "ANTHROPIC_API_KEY",
-        "models": ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"],
-        "label": "Claude vision",
-    },
     "OpenAI (GPT)": {
         "env": "OPENAI_API_KEY",
         "models": ["gpt-5.5", "gpt-5.4-mini", "gpt-4o"],
         "label": "OpenAI vision",
+    },
+    "Anthropic (Claude)": {
+        "env": "ANTHROPIC_API_KEY",
+        "models": ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"],
+        "label": "Claude vision",
     },
     "Google (Gemini)": {
         "env": "GOOGLE_API_KEY",
@@ -47,7 +47,7 @@ PROVIDERS = {
     },
 }
 
-DEFAULT_PROVIDER = "Anthropic (Claude)"
+DEFAULT_PROVIDER = "OpenAI (GPT)"
 
 
 def provider_names() -> list[str]:
@@ -62,22 +62,33 @@ def default_model(provider: str) -> str:
     return PROVIDERS[provider]["models"][0]
 
 
-_PROMPT = f"""You are a professional personal colour analyst.
-Analyze the person in this portrait and respond with ONLY a JSON object
-(no markdown fences, no preamble) with exactly these keys:
+_PROMPT = f"""You are an award-winning personal colour analyst working for a
+luxury styling consultancy (House of Colour / Color Me Beautiful calibre).
+
+Perform a professional seasonal colour analysis of the person in this
+portrait. Assess, strictly from what is visible:
+
+  • skin undertone (temperature)   • hair colour and depth
+  • eye colour                     • value (overall depth of colouring)
+  • chroma (softness vs clarity)   • contrast between skin, hair and eyes
+
+Judge only the person's natural colouring — ignore clothing colours, the
+background, and any colour cast from lighting or white balance as far as
+possible. Then pick the single closest of the 12 classic seasons.
+
+Respond with ONLY a JSON object (no markdown fences, no preamble) with
+exactly these keys:
 
   "undertone": "warm" | "cool" | "neutral-warm" | "neutral-cool"
   "hair_depth": "light" | "medium" | "deep"
   "eye_color": short description, e.g. "dark brown"
-  "warm": 0-100      (0 = very cool, 100 = very warm)
-  "depth": 0-100     (0 = very light colouring, 100 = very deep)
-  "chroma": 0-100    (0 = very soft/muted, 100 = very bright/clear)
-  "contrast": 0-100  (0 = low contrast between features, 100 = very high)
+  "warm": 0-100       (0 = very cool, 100 = very warm)
+  "depth": 0-100      (0 = very light colouring, 100 = very deep)
+  "chroma": 0-100     (0 = very soft/muted, 100 = very bright/clear)
+  "contrast": 0-100   (0 = low contrast between features, 100 = very high)
   "season": one of {SEASON_NAMES}
-  "summary": one sentence, max 18 words, describing why this season fits.
-
-Base everything strictly on the visible skin undertone, hair, eyes, and the
-contrast between them. Pick the single closest season."""
+  "confidence": 0-100 (how confident you are in the season call)
+  "summary": one sentence, max 18 words, describing why this season fits."""
 
 
 def _img_to_bytes(img: Image.Image) -> tuple[bytes, str]:
@@ -102,6 +113,7 @@ def _parse(text: str, source: str) -> dict:
         out["season"] = classify(out.get("warm", 50),
                                  out.get("depth", 50),
                                  out.get("chroma", 50))
+    out.setdefault("confidence", None)
     out["source"] = source
     return out
 
@@ -184,7 +196,7 @@ def analyze_offline(img: Image.Image) -> dict:
         season=season, warm=h["warm"], depth=h["depth"],
         chroma=h["chroma"], contrast=h["contrast"],
         undertone=undertone, hair_depth=h["hair_depth"],
-        eye_color=h["eye_color"],
+        eye_color=h["eye_color"], confidence=None,
         summary="Estimated from pixel sampling — add an API key for a "
                 "professional-grade analysis.",
         source="Offline heuristic",
