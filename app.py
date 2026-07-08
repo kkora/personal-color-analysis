@@ -11,7 +11,7 @@ import json
 import streamlit as st
 from PIL import Image, ImageOps
 
-from src.analysis import analyze
+from src.analysis import analyze, models_for, provider_names
 from src.imaging import palette_sheet, recolor_shirt
 from src.palettes import SEASONS
 
@@ -162,12 +162,17 @@ def combo_bar(hexes, name):
 # ----------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### Settings")
-    api_key = st.text_input("Anthropic API key (optional)", type="password",
-                            help="With a key, Claude vision performs the "
+    provider = st.selectbox("AI provider", provider_names(),
+                            help="Choose which vision model performs the "
+                                 "seasonal analysis. Without a key, a pixel-"
+                                 "sampling estimate is used.")
+    model = st.selectbox("Model", models_for(provider))
+    api_key = st.text_input(f"{provider} API key (optional)", type="password",
+                            help="With a key, the selected model performs the "
                                  "seasonal analysis. Without one, a pixel-"
                                  "sampling estimate is used.")
     st.caption("The portrait never leaves your machine unless you provide "
-               "an API key, in which case it is sent to the Anthropic API "
+               f"an API key, in which case it is sent to the {provider} API "
                "for analysis only.")
     manual = st.selectbox("Override season (optional)",
                           ["Auto-detect"] + list(SEASONS.keys()))
@@ -194,7 +199,7 @@ portrait = ImageOps.exif_transpose(
     Image.open(__import__("io").BytesIO(img_bytes))).convert("RGB")
 
 with st.spinner("Analyzing colouring…"):
-    result = analyze(portrait, api_key or None)
+    result = analyze(portrait, api_key or None, provider=provider, model=model)
 
 season_name = manual if manual != "Auto-detect" else result["season"]
 season = SEASONS[season_name]

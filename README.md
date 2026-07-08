@@ -26,7 +26,14 @@ All 12 classic colour seasons are fully specified in [`src/palettes.py`](src/pal
 
 Two engines, same output shape:
 
-1. **Claude vision** (recommended) — provide an Anthropic API key in the sidebar or via `ANTHROPIC_API_KEY`. Claude analyzes undertone, hair depth, eye colour, contrast, chroma and value from the portrait and picks the closest season.
+1. **Vision model** (recommended) — pick a provider and model in the sidebar and supply the matching API key. The model analyzes undertone, hair depth, eye colour, contrast, chroma and value from the portrait and picks the closest season. Supported providers:
+
+   | Provider | Env var | Models |
+   |---|---|---|
+   | Anthropic (Claude) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5` |
+   | OpenAI (GPT) | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4-mini`, `gpt-4o` |
+   | Google (Gemini) | `GOOGLE_API_KEY` | `gemini-2.5-pro`, `gemini-2.5-flash` |
+
 2. **Offline heuristic** (no key needed) — pixel sampling of the face and hair regions estimates the four axes and maps them to the nearest season. Approximate, but fully local.
 
 You can also override the detected season manually from the sidebar.
@@ -43,10 +50,12 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Optional — enable Claude vision analysis:
+Optional — enable vision analysis by exporting the key for your chosen provider:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY=sk-ant-...   # Anthropic (Claude)
+export OPENAI_API_KEY=sk-...          # OpenAI (GPT)
+export GOOGLE_API_KEY=...             # Google (Gemini)
 streamlit run app.py
 ```
 
@@ -57,20 +66,20 @@ or paste the key into the sidebar at runtime (it is never stored).
 ```
 app.py                  Streamlit UI — the full board
 src/palettes.py         Master colour library + 12 season definitions
-src/analysis.py         Claude vision analysis + offline fallback
+src/analysis.py         Multi-provider vision analysis (Claude/GPT/Gemini) + offline fallback
 src/imaging.py          Shirt recolouring, face sampling, palette PNG export
 .streamlit/config.toml  Light editorial theme
 ```
 
 ## Deploy
 
-Works out of the box on [Streamlit Community Cloud](https://streamlit.io/cloud): point it at `app.py`, and add `ANTHROPIC_API_KEY` under app secrets if you want vision analysis.
+Works out of the box on [Streamlit Community Cloud](https://streamlit.io/cloud): point it at `app.py`, and add the API key for your chosen provider (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`) under app secrets if you want vision analysis.
 
 ## Notes & limitations
 
 - Colour analysis is styling guidance, not a scientific measurement — lighting and camera white balance strongly affect results.
 - The offline heuristic assumes a roughly centred, front-facing portrait with the face in the upper-middle of the frame.
-- Portraits are processed in memory only. With an API key, the image is sent to the Anthropic API for analysis; otherwise it never leaves your machine.
+- Portraits are processed in memory only. With an API key, the image is sent to the selected provider's API for analysis; otherwise it never leaves your machine.
 
 ## License
 

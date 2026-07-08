@@ -2,3 +2,5 @@ streamlit>=1.38
 pillow>=10.0
 numpy>=1.26
 anthropic>=0.40
+openai>=1.50
+google-genai>=1.0
