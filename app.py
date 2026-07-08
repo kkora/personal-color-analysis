@@ -13,8 +13,8 @@ from PIL import Image, ImageOps
 
 from src.analysis import analyze, models_for, provider_names
 from src.board import render_board
-from src.genimage import (EDIT_MODELS, ai_recolor, generate_board_ai,
-                          resolve_key, supports_image_edit)
+from src.genimage import (BOARD_PROMPTS, EDIT_MODELS, ai_recolor,
+                          generate_board_ai, resolve_key, supports_image_edit)
 from src.imaging import palette_sheet, recolor_shirt
 from src.palettes import SEASONS
 
@@ -214,6 +214,11 @@ with st.sidebar:
                    "to OpenAI or Google for AI recolours.")
     elif ai_toggle and not edit_key:
         st.warning("Add an API key to enable AI garment recolours.")
+    prompt_version = st.selectbox(
+        "AI board prompt version", list(BOARD_PROMPTS.keys()),
+        help="The brief sent to the image model when the board engine "
+             "(bottom of the page) is set to 'AI editorial'. The latest "
+             "version is preselected.")
     manual = st.selectbox("Override season (optional)",
                           ["Auto-detect"] + list(SEASONS.keys()))
 
@@ -477,6 +482,9 @@ st.caption("The complete analysis as a single shareable image. "
 board_engine = st.radio(
     "Board engine", ["Composed (exact palettes)", "AI editorial (one-shot)"],
     horizontal=True, label_visibility="collapsed")
+if board_engine.startswith("AI"):
+    st.caption(f"Prompt version: **{prompt_version}** — change it in the "
+               "sidebar under Settings.")
 
 
 @st.cache_data(show_spinner=False)
@@ -492,11 +500,13 @@ def _board_png(img_bytes: bytes, season_name: str, result: dict,
 
 @st.cache_data(show_spinner=False)
 def _board_ai_png(img_bytes: bytes, season_name: str, result: dict,
-                  provider: str, model: str, key: str) -> bytes:
+                  provider: str, model: str, key: str,
+                  prompt_version: str) -> bytes:
     portrait = ImageOps.exif_transpose(
         Image.open(__import__("io").BytesIO(img_bytes))).convert("RGB")
     img = generate_board_ai(portrait, season_name, SEASONS[season_name],
-                            result, provider, key, model)
+                            result, provider, key, model,
+                            prompt_version=prompt_version)
     buf = __import__("io").BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -511,10 +521,11 @@ if board_engine.startswith("AI"):
         st.warning("Add an API key to generate the AI editorial board.")
     else:
         try:
-            with st.spinner("Designing editorial board (one image-model "
-                            "generation, ~1 minute)…"):
+            with st.spinner(f"Designing editorial board ({prompt_version}, "
+                            "one image-model generation, ~1 minute)…"):
                 board_png = _board_ai_png(img_bytes, season_name, result,
-                                          provider, edit_model, edit_key)
+                                          provider, edit_model, edit_key,
+                                          prompt_version)
         except Exception as exc:
             st.warning(f"AI board generation failed ({type(exc).__name__}) — "
                        "showing the composed board instead.")

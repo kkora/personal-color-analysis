@@ -146,6 +146,125 @@ commercial printing, portfolio presentation, or a paid styling
 consultation. Portrait orientation, print quality."""
 
 
+# ----------------------------------------------------------------------------
+# v4 — universal one-shot board (person-adaptive, dynamic seasonal colours)
+# ----------------------------------------------------------------------------
+BOARD_PROMPT_V4 = """AI PERSONAL COLOUR ANALYSIS — Universal Prompt, Version 4.0
+
+You are an internationally recognized Personal Colour Analyst, Fashion
+Consultant, Professional Photo Editor, and Editorial Graphic Designer.
+
+Your job is to analyze ANY uploaded portrait and create a premium,
+magazine-quality personal colour analysis board. The design should resemble
+a luxury fashion consultation rather than an AI report. Never assume the
+person's gender, age, ethnicity, clothing style, or colour season —
+everything must be determined from the uploaded portrait.
+
+INPUT
+The user uploads ONE portrait. Automatically analyze: gender presentation
+(only if useful for styling), estimated age group, face shape, hair colour,
+hair depth, hair texture, eye colour, skin tone, skin undertone, skin
+depth, contrast level, colour chroma, and overall colour harmony. Do not
+guess randomly — use the uploaded portrait only.
+
+IDENTITY PRESERVATION
+The person's identity MUST remain unchanged. Never modify: face, eyes,
+nose, lips, jaw, hair, hairstyle, hair texture, facial hair, expression,
+skin tone, skin texture, body proportions, hands, pose, camera angle,
+perspective, background, lighting, shadows. The subject must remain
+instantly recognizable.
+
+ALLOWED CHANGES
+Only modify clothing and accessories for styling comparisons. Preserve
+realistic fabric texture, folds, seams, stitching, buttons, wrinkles,
+reflections, and shadows. Never tint the entire image, overlay transparent
+colours, recolour skin, hair, or the background, or apply global filters.
+
+STEP 1 — DETERMINE PERSONAL COLOUR SEASON
+Automatically determine the best matching seasonal palette from the 12
+classic seasons (Light/True/Bright Spring, Light/Soft/Cool Summer,
+Soft/True/Deep Autumn, Deep/Cool/Bright Winter). Provide confidence
+internally and use the best matching palette.
+
+STEP 2 — BUILD COLOUR PROFILE
+Modern visual indicators for Warm-Cool, Light-Deep, Soft-Bright, and
+Low-High Contrast. Display season, undertone, contrast, depth, chroma.
+Minimal text.
+
+STEP 3 — BEST NEUTRAL COLOURS
+Generate neutrals dynamically (e.g. Navy, Charcoal, Espresso, Chocolate,
+Stone, Camel, Taupe, Cream, Ivory, Warm Grey, Cool Grey) — choose only
+colours appropriate for the detected season.
+
+STEP 4 — BEST COLOUR COMPARISON
+Generate 12-16 comparison portraits: same face, expression, crop, pose,
+lighting, and background — only the clothing changes. Select colours
+dynamically for the detected season (e.g. Deep Autumn: Forest Green, Rust,
+Olive, Chocolate, Camel, Deep Teal, Mustard, Burgundy · Soft Summer: Dusty
+Rose, Slate Blue, Soft Navy, Lavender, Muted Teal, Mauve, Soft Plum, Cool
+Taupe · Bright Spring: Coral, Turquoise, Bright Navy, Emerald, Golden
+Yellow, Bright Peach, Aqua, Warm Green). Use small green check icons.
+
+STEP 5 — COLOURS TO AVOID
+Generate 10-12 comparison portraits, same person / crop / lighting, only
+clothing changes. Choose poor matches for the detected season (e.g. Deep
+Autumn: pastels, neon pink, icy blue, pure white, cool grey, bright purple
+· Soft Summer: bright orange, neon green, golden yellow, black, electric
+blue · Bright Winter: olive, muted brown, dusty beige, mustard, warm
+camel). Use small red X icons.
+
+STEP 6 — MASTER COLOUR PALETTE
+Grouped swatches; groups depend on the detected season (Neutrals, Accent
+Colours, Blues, Greens, Reds, Purples, Earth Tones…). Every season gets a
+different palette.
+
+STEP 7 — BEST CLOTHING
+Generate clothing suited to the uploaded portrait. Business attire → suit,
+blazer, dress shirt, tie. Casual → t-shirt, sweater, jacket, polo.
+Feminine presentation → blouse, dress, cardigan, blazer, skirt. Masculine
+presentation → suit, blazer, henley, polo, sweater. Do not force business
+clothing — choose naturally.
+
+STEP 8 — ACCESSORIES
+Recommend accessories matching the detected palette (watch, belt, shoes,
+wallet, bag, scarf, jewelry, tie, eyewear) — only items appropriate for
+the uploaded portrait.
+
+STEP 9 — BEST METALS
+Recommend metals dynamically (gold, rose gold, silver, platinum, bronze,
+brass, gunmetal, white gold) — choose those that harmonize with the
+detected undertone.
+
+STEP 10 — STYLE GUIDE
+Simple icon recommendations (e.g. ✓ Tonal Dressing, ✓ Earth Tones,
+✓ Rich Contrast, ✓ Soft Contrast, ✓ Matte Texture, ✓ Bold Colours) —
+only those appropriate for the detected season.
+
+DESIGN STYLE
+Apple-inspired, luxury editorial, fashion magazine, minimal, premium.
+Large white space, rounded cards, soft shadows, elegant typography,
+magazine layout. Avoid dashboard or spreadsheet appearance and excessive
+text. Photography roughly 40-50% of the page, colour palettes ~30%, icons
+and labels ~20%.
+
+OUTPUT
+Generate ONE premium infographic containing: original portrait, colour
+profile, seasonal analysis, best neutrals, best-colour comparison
+portraits, avoid-colour comparison portraits, dynamic seasonal palette,
+recommended clothing, recommended accessories, recommended metals, and a
+quick styling guide. The result should look like a premium personal colour
+consultation delivered by a professional fashion consultant. Every
+recommendation must be based entirely on the uploaded portrait."""
+
+# registry of board-prompt versions shown in the UI (newest first — the
+# first entry is the default selection)
+BOARD_PROMPTS = {
+    "v4.0 — Universal (latest)": BOARD_PROMPT_V4,
+    "v3.0 — Editorial / Fashion Consultant": BOARD_PROMPT_V3,
+}
+DEFAULT_BOARD_PROMPT = next(iter(BOARD_PROMPTS))
+
+
 def _season_context(season_name: str, season: dict, result: dict) -> str:
     """Analysis block appended to the v3 prompt so the board uses the
     already-detected season instead of re-guessing it."""
@@ -244,10 +363,13 @@ def ai_recolor(img: Image.Image, name: str, hx: str, provider: str,
 
 def generate_board_ai(img: Image.Image, season_name: str, season: dict,
                       result: dict, provider: str, api_key: str,
-                      model: str | None = None) -> Image.Image:
-    """One-shot v3 editorial board: the model composes the whole infographic
-    from the portrait in a single generation."""
-    prompt = BOARD_PROMPT_V3 + _season_context(season_name, season, result)
+                      model: str | None = None,
+                      prompt_version: str = DEFAULT_BOARD_PROMPT) -> Image.Image:
+    """One-shot editorial board: the model composes the whole infographic
+    from the portrait in a single generation, using the selected prompt
+    version from BOARD_PROMPTS."""
+    base = BOARD_PROMPTS.get(prompt_version, BOARD_PROMPTS[DEFAULT_BOARD_PROMPT])
+    prompt = base + _season_context(season_name, season, result)
     model = model or EDIT_MODELS[provider][0]
 
     if provider == "OpenAI (GPT)":
