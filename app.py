@@ -13,7 +13,8 @@ from PIL import Image, ImageOps
 
 from src.analysis import analyze, models_for, provider_names
 from src.board import render_board
-from src.genimage import EDIT_MODELS, ai_recolor, resolve_key, supports_image_edit
+from src.genimage import (EDIT_MODELS, ai_recolor, generate_board_ai,
+                          resolve_key, supports_image_edit)
 from src.imaging import palette_sheet, recolor_shirt
 from src.palettes import SEASONS
 
@@ -467,9 +468,15 @@ st.divider()
 # Bonus — full board image (one shareable PNG)
 # ----------------------------------------------------------------------------
 section("Bonus", "Full Board Image")
-st.caption("The complete analysis composed into a single shareable image — "
-           "portrait, profile, comparison grids, palette, clothing, metals "
-           "and style guide.")
+st.caption("The complete analysis as a single shareable image. "
+           "**Composed** builds it locally from the exact palettes; "
+           "**AI editorial** sends the portrait and the luxury-consultation "
+           "brief to the image model, which designs the whole board in one "
+           "generation (needs an OpenAI or Google key, billed per image).")
+
+board_engine = st.radio(
+    "Board engine", ["Composed (exact palettes)", "AI editorial (one-shot)"],
+    horizontal=True, label_visibility="collapsed")
 
 
 @st.cache_data(show_spinner=False)
@@ -483,10 +490,42 @@ def _board_png(img_bytes: bytes, season_name: str, result: dict,
     return render_board(portrait, season_name, season, result, best, avoid)
 
 
-_ai_live = ai_mode and not st.session_state.get("ai_edit_failed")
-engine_sig = (_ai_live, provider if _ai_live else "", edit_model if _ai_live else "")
-with st.spinner("Composing board image…"):
-    board_png = _board_png(img_bytes, season_name, result, engine_sig)
+@st.cache_data(show_spinner=False)
+def _board_ai_png(img_bytes: bytes, season_name: str, result: dict,
+                  provider: str, model: str, key: str) -> bytes:
+    portrait = ImageOps.exif_transpose(
+        Image.open(__import__("io").BytesIO(img_bytes))).convert("RGB")
+    img = generate_board_ai(portrait, season_name, SEASONS[season_name],
+                            result, provider, key, model)
+    buf = __import__("io").BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+board_png = None
+if board_engine.startswith("AI"):
+    if not supports_image_edit(provider):
+        st.warning("Claude doesn't offer image generation — switch the "
+                   "provider to OpenAI or Google for the AI editorial board.")
+    elif not edit_key:
+        st.warning("Add an API key to generate the AI editorial board.")
+    else:
+        try:
+            with st.spinner("Designing editorial board (one image-model "
+                            "generation, ~1 minute)…"):
+                board_png = _board_ai_png(img_bytes, season_name, result,
+                                          provider, edit_model, edit_key)
+        except Exception as exc:
+            st.warning(f"AI board generation failed ({type(exc).__name__}) — "
+                       "showing the composed board instead.")
+
+if board_png is None:
+    _ai_live = ai_mode and not st.session_state.get("ai_edit_failed")
+    engine_sig = (_ai_live, provider if _ai_live else "",
+                  edit_model if _ai_live else "")
+    with st.spinner("Composing board image…"):
+        board_png = _board_png(img_bytes, season_name, result, engine_sig)
+
 st.image(board_png, use_container_width=True)
 st.download_button(
     "Download board PNG",
